@@ -45,7 +45,9 @@ export default async function RouteDetailPage(
             </span>{" "}
             <span className="text-foreground/50">
               — assigned since{" "}
-              {new Date(activeAssignment.assigned_at).toLocaleDateString()}
+              {new Date(activeAssignment.assigned_at).toLocaleDateString("en-US", {
+                timeZone: "America/New_York",
+              })}
             </span>
           </p>
         ) : (

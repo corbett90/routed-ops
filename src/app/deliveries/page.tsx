@@ -92,9 +92,18 @@ export default async function DeliveriesPage(
 
               <div className="text-xs text-foreground/50">
                 {d.delivered_at &&
-                  new Date(d.delivered_at).toLocaleString(undefined, {
+                  new Date(d.delivered_at).toLocaleString("en-US", {
                     dateStyle: "medium",
                     timeStyle: "short",
+                    // This page renders on the server (Vercel runs in UTC),
+                    // not in the driver's/viewer's browser, so without this
+                    // the displayed time is whatever the server's clock
+                    // says, not the reader's local time. Routed operates
+                    // only in the Marietta/Cobb County, GA area, so Eastern
+                    // is hardcoded here rather than detected — revisit if
+                    // routes ever run in another time zone.
+                    timeZone: "America/New_York",
+                    timeZoneName: "short",
                   })}
                 {d.driver_name ? ` · ${d.driver_name}` : ""}
               </div>
