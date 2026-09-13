@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createDeliveryCapture } from "@/app/actions";
 
 export function DeliveryForm({
@@ -45,6 +45,32 @@ export function DeliveryForm({
     );
   }, []);
 
+  // The canvas is drawn at a fixed internal resolution but stretched to fill
+  // its container via CSS (w-full h-44), so on a narrower screen (a phone)
+  // the visible size no longer matches that internal resolution — pointer
+  // coordinates (in on-screen CSS pixels) were being used directly as canvas
+  // coordinates, so the ink landed wherever the *600x180 space* mapped to,
+  // not where the finger actually was. This resizes the canvas's real
+  // drawing buffer to match its rendered size (scaled for device pixel
+  // ratio so it stays crisp on retina/phone screens), so screen coordinates
+  // and canvas coordinates are the same thing.
+  useLayoutEffect(() => {
+    function resizeCanvas() {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.scale(dpr, dpr);
+    }
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return () => window.removeEventListener("resize", resizeCanvas);
+  }, []);
+
   function getCanvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -54,6 +80,7 @@ export function DeliveryForm({
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    canvas.setPointerCapture(e.pointerId);
     drawingRef.current = true;
     const ctx = canvas.getContext("2d")!;
     const { x, y } = getCanvasPoint(e);
