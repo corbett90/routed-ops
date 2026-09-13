@@ -104,3 +104,82 @@ export async function assignVehicleToRoute(routeId: string, vehicleId: string) {
   revalidatePath(`/routes/${routeId}`);
   revalidatePath("/routes");
 }
+
+// ---------------------------------------------------------------------------
+// Driver capture — "No Paperwork Headaches" + "Proof of Delivery"
+// One submission covers both: the PO/BOL photo and signature ARE the digital
+// paperwork, and the same record IS the proof-of-delivery entry.
+// ---------------------------------------------------------------------------
+export async function createDeliveryCapture(formData: FormData) {
+  const supabase = await createClient();
+
+  const routeId = String(formData.get("route_id"));
+  const routeStopId = String(formData.get("route_stop_id"));
+  const vehicleId = formData.get("vehicle_id")
+    ? String(formData.get("vehicle_id"))
+    : null;
+  const driverName = formData.get("driver_name")
+    ? String(formData.get("driver_name"))
+    : null;
+  const poNumber = formData.get("po_number")
+    ? String(formData.get("po_number"))
+    : null;
+  const bolNumber = formData.get("bol_number")
+    ? String(formData.get("bol_number"))
+    : null;
+  const lat = formData.get("lat") ? Number(formData.get("lat")) : null;
+  const lng = formData.get("lng") ? Number(formData.get("lng")) : null;
+  const signatureDataUrl = formData.get("signature_data")
+    ? String(formData.get("signature_data"))
+    : null;
+  const photo = formData.get("photo") as File | null;
+
+  const deliveryId = crypto.randomUUID();
+  let photoUrl: string | null = null;
+  let signatureUrl: string | null = null;
+
+  if (photo && photo.size > 0) {
+    const ext = photo.name.split(".").pop() || "jpg";
+    const path = `${deliveryId}/photo.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("delivery-media")
+      .upload(path, photo, { contentType: photo.type || "image/jpeg" });
+    if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`);
+    photoUrl = supabase.storage.from("delivery-media").getPublicUrl(path).data
+      .publicUrl;
+  }
+
+  if (signatureDataUrl && signatureDataUrl.startsWith("data:image")) {
+    const base64 = signatureDataUrl.split(",")[1];
+    const buffer = Buffer.from(base64, "base64");
+    const path = `${deliveryId}/signature.png`;
+    const { error: uploadError } = await supabase.storage
+      .from("delivery-media")
+      .upload(path, buffer, { contentType: "image/png" });
+    if (uploadError)
+      throw new Error(`Signature upload failed: ${uploadError.message}`);
+    signatureUrl = supabase.storage.from("delivery-media").getPublicUrl(path)
+      .data.publicUrl;
+  }
+
+  const { error } = await supabase.from("deliveries").insert({
+    id: deliveryId,
+    route_id: routeId,
+    route_stop_id: routeStopId,
+    vehicle_id: vehicleId,
+    driver_name: driverName,
+    po_number: poNumber,
+    bol_number: bolNumber,
+    status: "delivered",
+    delivered_at: new Date().toISOString(),
+    signature_url: signatureUrl,
+    photo_url: photoUrl,
+    delivered_lat: lat,
+    delivered_lng: lng,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/deliver/${routeId}`);
+  redirect(`/deliver/${routeId}/${routeStopId}/done`);
+}

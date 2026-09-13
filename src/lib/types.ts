@@ -48,3 +48,26 @@ export interface RouteWithDetails extends Route {
   route_stops: RouteStop[];
   route_assignments: (RouteAssignment & { vehicles: Vehicle | null })[];
 }
+
+export interface Delivery {
+  id: string;
+  route_id: string;
+  route_stop_id: string;
+  vehicle_id: string | null;
+  driver_name: string | null;
+  po_number: string | null;
+  bol_number: string | null;
+  status: DeliveryStatus;
+  scheduled_at: string;
+  delivered_at: string | null;
+  signature_url: string | null;
+  photo_url: string | null;
+  delivered_lat: number | null;
+  delivered_lng: number | null;
+  created_at: string;
+}
+
+export interface DeliveryWithContext extends Delivery {
+  route_stops: RouteStop | null;
+  routes: Route | null;
+}

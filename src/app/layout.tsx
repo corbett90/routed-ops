@@ -23,6 +23,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/routes" className="hover:text-accent">
                 Routes
               </Link>
+              <Link href="/deliver" className="hover:text-accent">
+                Deliver
+              </Link>
+              <Link href="/deliveries" className="hover:text-accent">
+                Proof of Delivery
+              </Link>
             </nav>
           </div>
         </header>
