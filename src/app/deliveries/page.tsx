@@ -102,8 +102,12 @@ export default async function DeliveriesPage(
                     // only in the Marietta/Cobb County, GA area, so Eastern
                     // is hardcoded here rather than detected — revisit if
                     // routes ever run in another time zone.
+                    //
+                    // Note: timeZoneName can't be combined with
+                    // dateStyle/timeStyle (JS throws a RangeError if you
+                    // try) — that combination is exactly what broke this
+                    // page after the first timezone fix.
                     timeZone: "America/New_York",
-                    timeZoneName: "short",
                   })}
                 {d.driver_name ? ` · ${d.driver_name}` : ""}
               </div>
