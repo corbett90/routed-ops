@@ -2,13 +2,44 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+
+// ---------------------------------------------------------------------------
+// Customer portal auth (magic link) — uses the regular anon-key, cookie-aware
+// client, NOT the admin client. This is a real user-facing login, so it goes
+// through Supabase Auth + RLS like any normal signed-in request would.
+// ---------------------------------------------------------------------------
+export async function requestPortalMagicLink(
+  formData: FormData
+): Promise<{ error?: string; sent?: boolean }> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter your email address." };
+
+  const supabase = await createClient();
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://routed-ops.vercel.app";
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${siteUrl}/auth/callback` },
+  });
+
+  if (error) return { error: error.message };
+  return { sent: true };
+}
+
+export async function signOutOfPortal() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/portal/login");
+}
 
 // ---------------------------------------------------------------------------
 // Vehicles
 // ---------------------------------------------------------------------------
 export async function createVehicle(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { error } = await supabase.from("vehicles").insert({
     name: String(formData.get("name")),
@@ -28,7 +59,7 @@ export async function createVehicle(formData: FormData) {
 }
 
 export async function updateVehicleStatus(vehicleId: string, status: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from("vehicles")
     .update({ status })
@@ -42,7 +73,7 @@ export async function updateVehicleStatus(vehicleId: string, status: string) {
 // Routes
 // ---------------------------------------------------------------------------
 export async function createRoute(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from("routes")
@@ -61,7 +92,7 @@ export async function createRoute(formData: FormData) {
 }
 
 export async function addRouteStop(routeId: string, formData: FormData) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Next sequence order = current max + 1
   const { data: existing } = await supabase
@@ -84,8 +115,57 @@ export async function addRouteStop(routeId: string, formData: FormData) {
   revalidatePath(`/routes/${routeId}`);
 }
 
+export async function setStopScheduledTime(
+  routeId: string,
+  stopId: string,
+  formData: FormData
+) {
+  const supabase = createAdminClient();
+  const scheduledTime = formData.get("scheduled_time")
+    ? String(formData.get("scheduled_time"))
+    : null;
+
+  const { error } = await supabase
+    .from("route_stops")
+    .update({ scheduled_time: scheduledTime })
+    .eq("id", stopId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/routes/${routeId}`);
+}
+
+export async function grantStoreAccess(
+  routeId: string,
+  stopId: string,
+  formData: FormData
+) {
+  const supabase = createAdminClient();
+  const email = String(formData.get("email")).trim().toLowerCase();
+
+  const { error } = await supabase
+    .from("store_access")
+    .insert({ route_stop_id: stopId, email });
+
+  // A duplicate grant (same email already added to this stop) isn't an
+  // error worth surfacing — treat it as a no-op.
+  if (error && error.code !== "23505") throw new Error(error.message);
+
+  revalidatePath(`/routes/${routeId}`);
+}
+
+export async function revokeStoreAccess(routeId: string, storeAccessId: string) {
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("store_access")
+    .delete()
+    .eq("id", storeAccessId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/routes/${routeId}`);
+}
+
 export async function assignVehicleToRoute(routeId: string, vehicleId: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Close out any currently active assignment for this route
   await supabase
@@ -111,7 +191,7 @@ export async function assignVehicleToRoute(routeId: string, vehicleId: string) {
 // paperwork, and the same record IS the proof-of-delivery entry.
 // ---------------------------------------------------------------------------
 export async function createDeliveryCapture(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const routeId = String(formData.get("route_id"));
   const routeStopId = String(formData.get("route_stop_id"));

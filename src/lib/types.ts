@@ -32,6 +32,14 @@ export interface RouteStop {
   lat: number | null;
   lng: number | null;
   sequence_order: number;
+  scheduled_time: string | null; // "HH:MM:SS", the time of day the driver is expected
+  created_at: string;
+}
+
+export interface StoreAccess {
+  id: string;
+  route_stop_id: string;
+  email: string;
   created_at: string;
 }
 
@@ -45,7 +53,7 @@ export interface RouteAssignment {
 }
 
 export interface RouteWithDetails extends Route {
-  route_stops: RouteStop[];
+  route_stops: (RouteStop & { store_access: StoreAccess[] })[];
   route_assignments: (RouteAssignment & { vehicles: Vehicle | null })[];
 }
 
