@@ -95,6 +95,21 @@ export default async function PortalDashboardPage() {
     );
   }
 
+  // TEMPORARY DEBUG — call debug_rls_check(), which runs the EXACT same
+  // EXISTS(...) logic as the route_stops policy, live, in the same breath
+  // as reading auth.jwt() — to see whether it actually matches at runtime.
+  {
+    const { data: rlsCheckData, error: rlsCheckError } = await supabase.rpc(
+      "debug_rls_check"
+    );
+    console.log(
+      "[portal-debug] RPC debug_rls_check() result:",
+      JSON.stringify(rlsCheckData),
+      "error:",
+      rlsCheckError?.message
+    );
+  }
+
   // TEMPORARY DEBUG — bare query with no joins, to isolate whether the
   // nested routes/route_assignments/vehicles embeds are the problem.
   const { data: bareStops, error: bareError } = await supabase
