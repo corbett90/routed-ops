@@ -9,10 +9,31 @@ import type { Delivery, RouteWithDetails } from "@/lib/types";
 export default async function PortalDashboardPage() {
   const supabase = await createClient();
 
+  // TEMPORARY DEBUG — remove once the "no stores linked" RLS mystery is solved.
+  const {
+    data: { user: debugUser },
+    error: debugUserError,
+  } = await supabase.auth.getUser();
+  console.log(
+    "[portal-debug] user:",
+    debugUser?.email,
+    "id:",
+    debugUser?.id,
+    "getUser error:",
+    debugUserError?.message
+  );
+
   const { data: stops, error } = await supabase
     .from("route_stops")
     .select("*, routes(*, route_assignments(*, vehicles(*)))")
     .order("store_name");
+
+  console.log(
+    "[portal-debug] stops count:",
+    stops?.length,
+    "query error:",
+    error?.message
+  );
 
   const typedStops = (stops ?? []) as (RouteWithDetails["route_stops"][number] & {
     routes: RouteWithDetails | null;
