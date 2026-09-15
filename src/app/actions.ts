@@ -5,28 +5,61 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://routed-ops.vercel.app";
+
 // ---------------------------------------------------------------------------
-// Customer portal auth (magic link) — uses the regular anon-key, cookie-aware
-// client, NOT the admin client. This is a real user-facing login, so it goes
-// through Supabase Auth + RLS like any normal signed-in request would.
+// Customer portal auth (email + password). Accounts are NOT self-service —
+// a store only gets one when Routed invites them (see grantStoreAccess
+// below), which emails them a one-time link to set their own password.
+// From then on they sign in with that email + password directly, no link
+// needed each time. Sign-in itself uses the regular anon-key, cookie-aware
+// client, NOT the admin client — this is a real user-facing login, so it
+// goes through Supabase Auth + RLS like any normal signed-in request would.
 // ---------------------------------------------------------------------------
-export async function requestPortalMagicLink(
+export async function signInToPortal(
+  formData: FormData
+): Promise<{ error?: string }> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!email || !password) return { error: "Enter your email and password." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { error: "Incorrect email or password." };
+
+  redirect("/portal");
+}
+
+export async function requestPortalPasswordReset(
   formData: FormData
 ): Promise<{ error?: string; sent?: boolean }> {
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return { error: "Enter your email address." };
 
   const supabase = await createClient();
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://routed-ops.vercel.app";
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: `${siteUrl}/auth/callback` },
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${SITE_URL}/auth/callback?next=/portal/set-password`,
   });
 
   if (error) return { error: error.message };
   return { sent: true };
+}
+
+export async function setPortalPassword(
+  formData: FormData
+): Promise<{ error?: string }> {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < 8)
+    return { error: "Password must be at least 8 characters." };
+  if (password !== confirm) return { error: "Passwords don't match." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { error: error.message };
+
+  redirect("/portal");
 }
 
 export async function signOutOfPortal() {
@@ -149,6 +182,15 @@ export async function grantStoreAccess(
   // A duplicate grant (same email already added to this stop) isn't an
   // error worth surfacing — treat it as a no-op.
   if (error && error.code !== "23505") throw new Error(error.message);
+
+  // Invite this email so they can set a password and log in — this is how
+  // portal accounts get created; there's no self-service signup. If they
+  // already have an account (e.g. they already have access to another
+  // stop), Supabase returns an "already registered" error here, which is
+  // expected, not a failure, so it's swallowed rather than thrown.
+  await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${SITE_URL}/auth/callback?next=/portal/set-password`,
+  });
 
   revalidatePath(`/routes/${routeId}`);
 }

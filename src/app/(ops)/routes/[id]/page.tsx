@@ -198,9 +198,12 @@ export default async function RouteDetailPage(
                         type="submit"
                         className="text-xs text-accent font-medium hover:underline"
                       >
-                        Grant access
+                        Grant access &amp; invite
                       </button>
                     </form>
+                    <p className="text-[11px] text-foreground/40 mt-1">
+                      Sends them an email to set up their portal password.
+                    </p>
                   </div>
                 </div>
               </div>
