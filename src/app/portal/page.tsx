@@ -6,134 +6,20 @@ import type { Delivery, RouteWithDetails } from "@/lib/types";
 // cookie-aware client — Row Level Security (migration 0003) is what
 // actually restricts the results to this logged-in email's own stop(s),
 // not any filtering done here in the app.
+//
+// Note: the route_stops SELECT policy checks store_access via the
+// has_store_access(stop_id) SQL function rather than a raw subquery,
+// because store_access has its own "no direct access" RLS policy that
+// would otherwise block the subquery too. See has_store_access() in the
+// database — a SECURITY DEFINER function that only ever returns a plain
+// boolean, so store_access's own lockdown stays intact.
 export default async function PortalDashboardPage() {
   const supabase = await createClient();
-
-  // TEMPORARY DEBUG — remove once the "no stores linked" RLS mystery is solved.
-  const {
-    data: { user: debugUser },
-    error: debugUserError,
-  } = await supabase.auth.getUser();
-  console.log(
-    "[portal-debug] user:",
-    debugUser?.email,
-    "id:",
-    debugUser?.id,
-    "getUser error:",
-    debugUserError?.message
-  );
-
-  // TEMPORARY DEBUG — decode the actual access token being used for the
-  // PostgREST request, to see exactly what identity/role Postgres receives.
-  const {
-    data: { session: debugSession },
-  } = await supabase.auth.getSession();
-  if (debugSession?.access_token) {
-    try {
-      const payloadB64 = debugSession.access_token.split(".")[1];
-      const payloadJson = Buffer.from(payloadB64, "base64").toString("utf8");
-      const payload = JSON.parse(payloadJson);
-      console.log(
-        "[portal-debug] JWT payload — email:",
-        payload.email,
-        "role:",
-        payload.role,
-        "aud:",
-        payload.aud,
-        "exp:",
-        payload.exp,
-        "now:",
-        Math.floor(Date.now() / 1000),
-        "sub:",
-        payload.sub
-      );
-    } catch (e) {
-      console.log("[portal-debug] JWT decode failed:", (e as Error).message);
-    }
-  } else {
-    console.log("[portal-debug] NO SESSION / no access_token from getSession()");
-  }
-
-  // TEMPORARY DEBUG — bypass supabase-js entirely: raw REST call to
-  // PostgREST using this exact, already-verified-correct access token.
-  if (debugSession?.access_token) {
-    try {
-      const directRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/route_stops?select=id,store_name`,
-        {
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            Authorization: `Bearer ${debugSession.access_token}`,
-          },
-          cache: "no-store",
-        }
-      );
-      const directBody = await directRes.text();
-      console.log(
-        "[portal-debug] DIRECT fetch status:",
-        directRes.status,
-        "body:",
-        directBody
-      );
-    } catch (e) {
-      console.log("[portal-debug] DIRECT fetch failed:", (e as Error).message);
-    }
-  }
-
-  // TEMPORARY DEBUG — call the debug_jwt() SQL function via RPC (goes
-  // through the real, live PostgREST/RLS pathway) to see exactly what
-  // auth.jwt() evaluates to during an actual authenticated request.
-  {
-    const { data: jwtRpcData, error: jwtRpcError } = await supabase.rpc(
-      "debug_jwt"
-    );
-    console.log(
-      "[portal-debug] RPC debug_jwt() result:",
-      JSON.stringify(jwtRpcData),
-      "error:",
-      jwtRpcError?.message
-    );
-  }
-
-  // TEMPORARY DEBUG — call debug_rls_check(), which runs the EXACT same
-  // EXISTS(...) logic as the route_stops policy, live, in the same breath
-  // as reading auth.jwt() — to see whether it actually matches at runtime.
-  {
-    const { data: rlsCheckData, error: rlsCheckError } = await supabase.rpc(
-      "debug_rls_check"
-    );
-    console.log(
-      "[portal-debug] RPC debug_rls_check() result:",
-      JSON.stringify(rlsCheckData),
-      "error:",
-      rlsCheckError?.message
-    );
-  }
-
-  // TEMPORARY DEBUG — bare query with no joins, to isolate whether the
-  // nested routes/route_assignments/vehicles embeds are the problem.
-  const { data: bareStops, error: bareError } = await supabase
-    .from("route_stops")
-    .select("id, store_name");
-  console.log(
-    "[portal-debug] BARE stops count:",
-    bareStops?.length,
-    "bare error:",
-    bareError?.message,
-    JSON.stringify(bareStops)
-  );
 
   const { data: stops, error } = await supabase
     .from("route_stops")
     .select("*, routes(*, route_assignments(*, vehicles(*)))")
     .order("store_name");
-
-  console.log(
-    "[portal-debug] stops count:",
-    stops?.length,
-    "query error:",
-    error?.message
-  );
 
   const typedStops = (stops ?? []) as (RouteWithDetails["route_stops"][number] & {
     routes: RouteWithDetails | null;
