@@ -1,5 +1,6 @@
 "use server";
 
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -66,6 +67,104 @@ export async function signOutOfPortal() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/portal/login");
+}
+
+// ---------------------------------------------------------------------------
+// Staff auth (email + password) — gates the internal ops pages (Vehicles,
+// Routes, Deliver, Proof of Delivery). Same shape as the customer portal's
+// auth above (accounts are invite-only via addStaffAccess below, not
+// self-service), kept as separate functions so each login area's redirect
+// targets stay simple and explicit. The actual access boundary lives in
+// proxy.ts, which checks staff_access — not RLS, since these pages read
+// via the service-role admin client.
+// ---------------------------------------------------------------------------
+export async function signInStaff(
+  formData: FormData
+): Promise<{ error?: string }> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!email || !password) return { error: "Enter your email and password." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { error: "Incorrect email or password." };
+
+  redirect("/");
+}
+
+export async function requestStaffPasswordReset(
+  formData: FormData
+): Promise<{ error?: string; sent?: boolean }> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter your email address." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${SITE_URL}/auth/callback?next=/staff/set-password`,
+  });
+
+  if (error) return { error: error.message };
+  return { sent: true };
+}
+
+export async function setStaffPassword(
+  formData: FormData
+): Promise<{ error?: string }> {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < 8)
+    return { error: "Password must be at least 8 characters." };
+  if (password !== confirm) return { error: "Passwords don't match." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { error: error.message };
+
+  redirect("/");
+}
+
+export async function signOutStaff() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/staff/login");
+}
+
+// ---------------------------------------------------------------------------
+// Staff management (admin-only — enforced by the caller/page, not here;
+// see src/app/(ops)/staff/page.tsx).
+// ---------------------------------------------------------------------------
+export async function addStaffAccess(formData: FormData) {
+  const supabase = createAdminClient();
+  const email = String(formData.get("email")).trim().toLowerCase();
+  const role = String(formData.get("role") ?? "driver");
+
+  const { error } = await supabase
+    .from("staff_access")
+    .insert({ email, role });
+
+  // A duplicate (email already staff) isn't worth surfacing as an error.
+  if (error && error.code !== "23505") throw new Error(error.message);
+
+  // Invite them so they can set a password — same invite-only pattern as
+  // grantStoreAccess. If they already have an account (e.g. they already
+  // have customer portal access under the same email), Supabase returns
+  // an "already registered" error here, which is expected and swallowed.
+  await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${SITE_URL}/auth/callback?next=/staff/set-password`,
+  });
+
+  revalidatePath("/staff");
+}
+
+export async function removeStaffAccess(staffAccessId: string) {
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("staff_access")
+    .delete()
+    .eq("id", staffAccessId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/staff");
 }
 
 // ---------------------------------------------------------------------------
