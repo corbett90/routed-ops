@@ -22,6 +22,8 @@ export type RouteMarker = {
   stops: StopMarker[];
 };
 
+type LatestPosition = { lat: number; lng: number; recorded_at: string };
+
 // Marietta, GA — sensible default map center before any ping has ever come
 // in (Routed operates only in the Marietta/Cobb County area, same as the
 // hardcoded Eastern-time display elsewhere in this app).
@@ -52,12 +54,10 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
   // whether that route is currently shown — so switching a route's filter
   // pill back on can redraw it instantly from memory instead of waiting
   // for its next ping.
-  const positionsRef = useRef
-    Map<string, { lat: number; lng: number; recorded_at: string }>
-  >(
+  const positionsRef = useRef<Map<string, LatestPosition>>(
     new Map(
       initialRoutes
-        .filter((r): r is RouteMarker & { lastPing: NonNullable<RouteMarker["lastPing"]> } => r.lastPing !== null)
+        .filter((r): r is RouteMarker & { lastPing: LatestPosition } => r.lastPing !== null)
         .map((r) => [r.routeId, r.lastPing])
     )
   );
