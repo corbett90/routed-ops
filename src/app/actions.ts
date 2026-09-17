@@ -223,6 +223,42 @@ export async function createRoute(formData: FormData) {
   redirect(`/routes/${data.id}`);
 }
 
+// ---------------------------------------------------------------------------
+// Geocoding — turns a typed address into a lat/lng so a stop can be plotted
+// as a star on the live map (see src/app/(ops)/track). Uses OpenStreetMap's
+// free Nominatim geocoder — no API key, same underlying data source as the
+// map tiles the live map already uses. Nominatim's usage policy requires a
+// real identifying User-Agent for non-browser callers and asks for at most
+// ~1 request/second, both fine for how rarely stops get added here.
+//
+// Failure is never fatal — a stop that can't be geocoded (bad address, the
+// service being down, no address given at all) still gets created, just
+// without coordinates. It simply won't show up on the live map until
+// someone clicks "Locate" on it (see regeocodeStop below) with a workable
+// address.
+// ---------------------------------------------------------------------------
+async function geocodeAddress(
+  address: string
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
+      address
+    )}`;
+    const response = await fetch(url, {
+      headers: { "User-Agent": "routed-ops (sales@routedparts.com)" },
+    });
+    if (!response.ok) return null;
+
+    const results = (await response.json()) as { lat: string; lon: string }[];
+    const first = results[0];
+    if (!first) return null;
+
+    return { lat: Number(first.lat), lng: Number(first.lon) };
+  } catch {
+    return null;
+  }
+}
+
 export async function addRouteStop(routeId: string, formData: FormData) {
   const supabase = createAdminClient();
 
@@ -236,15 +272,50 @@ export async function addRouteStop(routeId: string, formData: FormData) {
 
   const nextSeq = existing && existing.length > 0 ? existing[0].sequence_order + 1 : 1;
 
+  const address = formData.get("address") ? String(formData.get("address")) : null;
+  const coords = address ? await geocodeAddress(address) : null;
+
   const { error } = await supabase.from("route_stops").insert({
     route_id: routeId,
     store_name: String(formData.get("store_name")),
-    address: formData.get("address") ? String(formData.get("address")) : null,
+    address,
     sequence_order: nextSeq,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
   });
 
   if (error) throw new Error(error.message);
   revalidatePath(`/routes/${routeId}`);
+}
+
+// Backfills coordinates for a stop that was added before geocoding existed,
+// or whose address didn't resolve the first time (e.g. a typo since fixed).
+// Surfaces success/failure so the "Locate" button on the Routes page can
+// tell the person what happened rather than failing silently.
+export async function regeocodeStop(
+  routeId: string,
+  stopId: string,
+  address: string
+): Promise<{ error?: string }> {
+  const coords = await geocodeAddress(address);
+  if (!coords) {
+    return {
+      error:
+        "Couldn't find coordinates for that address — double-check it's a full, correct address.",
+    };
+  }
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("route_stops")
+    .update({ lat: coords.lat, lng: coords.lng })
+    .eq("id", stopId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/routes/${routeId}`);
+  revalidatePath("/track");
+  return {};
 }
 
 export async function setStopScheduledTime(

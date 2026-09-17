@@ -8,6 +8,7 @@ import {
   revokeStoreAccess,
   setStopScheduledTime,
 } from "@/app/actions";
+import { LocateStopButton } from "./LocateStopButton";
 
 export default async function RouteDetailPage(
   props: PageProps<"/routes/[id]">
@@ -118,6 +119,15 @@ export default async function RouteDetailPage(
                       <div className="text-foreground/50">{stop.address}</div>
                     )}
                   </div>
+                </div>
+
+                <div className="pl-9">
+                  <LocateStopButton
+                    routeId={id}
+                    stopId={stop.id}
+                    address={stop.address}
+                    hasCoords={stop.lat !== null && stop.lng !== null}
+                  />
                 </div>
 
                 <div className="pl-9 flex flex-wrap items-end gap-6">
