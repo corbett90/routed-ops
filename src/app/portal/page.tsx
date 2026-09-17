@@ -16,10 +16,14 @@ import type { Delivery, RouteWithDetails } from "@/lib/types";
 export default async function PortalDashboardPage() {
   const supabase = await createClient();
 
+  // Ordered by scheduled arrival time (earliest first) so a store watching
+  // multiple stops sees them the same way a driver would hit them along the
+  // route, rather than alphabetically. A stop with no scheduled time yet
+  // sorts last (nullsFirst: false) rather than first.
   const { data: stops, error } = await supabase
     .from("route_stops")
     .select("*, routes(*, route_assignments(*, vehicles(*)))")
-    .order("store_name");
+    .order("scheduled_time", { ascending: true, nullsFirst: false });
 
   const typedStops = (stops ?? []) as (RouteWithDetails["route_stops"][number] & {
     routes: RouteWithDetails | null;
