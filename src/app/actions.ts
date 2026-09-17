@@ -404,3 +404,40 @@ export async function createDeliveryCapture(formData: FormData) {
   revalidatePath(`/deliver/${routeId}`);
   redirect(`/deliver/${routeId}/${routeStopId}/done`);
 }
+
+// ---------------------------------------------------------------------------
+// Live tracking (concept/demo) — a driver's phone pushes a GPS breadcrumb
+// every ~15s while a route is actively being driven (see RouteTracker.tsx,
+// rendered on the /deliver/[routeId] stop list). Written via the admin
+// client like every other ops write; migration 0006 is what lets a ping
+// stand on its own against a route_id/vehicle_id instead of requiring a
+// finished delivery row to attach to.
+//
+// Returns an error string instead of throwing so the client component can
+// show it inline without crashing the tracking loop on one bad request.
+// ---------------------------------------------------------------------------
+export async function logLocationPing(
+  formData: FormData
+): Promise<{ error?: string }> {
+  const routeId = formData.get("route_id") ? String(formData.get("route_id")) : null;
+  const vehicleId = formData.get("vehicle_id")
+    ? String(formData.get("vehicle_id"))
+    : null;
+  const lat = Number(formData.get("lat"));
+  const lng = Number(formData.get("lng"));
+
+  if (!routeId || Number.isNaN(lat) || Number.isNaN(lng)) {
+    return { error: "Missing route or location data." };
+  }
+
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("location_pings").insert({
+    route_id: routeId,
+    vehicle_id: vehicleId,
+    lat,
+    lng,
+  });
+
+  if (error) return { error: error.message };
+  return {};
+}

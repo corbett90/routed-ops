@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { RouteStop } from "@/lib/types";
+import type { Route, RouteAssignment, RouteStop, Vehicle } from "@/lib/types";
+import { RouteTracker } from "./RouteTracker";
 
 export default async function DeliverStopListPage(
   props: PageProps<"/deliver/[routeId]">
@@ -11,11 +12,17 @@ export default async function DeliverStopListPage(
 
   const { data: route } = await supabase
     .from("routes")
-    .select("*")
+    .select("*, route_assignments(*, vehicles(*))")
     .eq("id", routeId)
     .single();
 
   if (!route) notFound();
+
+  const typedRoute = route as Route & {
+    route_assignments: (RouteAssignment & { vehicles: Vehicle | null })[];
+  };
+  const activeVehicle =
+    typedRoute.route_assignments?.find((a) => a.is_active)?.vehicles ?? null;
 
   const { data: stops } = await supabase
     .from("route_stops")
@@ -46,6 +53,12 @@ export default async function DeliverStopListPage(
         <h1 className="text-2xl font-bold mt-2">{route.name}</h1>
         <p className="text-foreground/60 mt-1">{route.client_name} — tap a stop to deliver.</p>
       </div>
+
+      <RouteTracker
+        routeId={routeId}
+        vehicleId={activeVehicle?.id ?? null}
+        routeName={typedRoute.name}
+      />
 
       <div className="rounded-lg border border-border bg-white divide-y divide-border">
         {stops && stops.length > 0 ? (

@@ -45,6 +45,9 @@ export default async function OpsLayout({ children }: LayoutProps<"/">) {
             <Link href="/deliver" className="hover:text-accent">
               Deliver
             </Link>
+            <Link href="/track" className="hover:text-accent">
+              Live Map
+            </Link>
             <Link href="/deliveries" className="hover:text-accent">
               Proof of Delivery
             </Link>
