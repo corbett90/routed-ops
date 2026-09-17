@@ -357,6 +357,64 @@ export async function updateStopAddress(
   return {};
 }
 
+// Reorders a stop by swapping its sequence_order with its immediate
+// neighbor (up = earlier in the route, down = later). A pair of up/down
+// buttons is simpler and far less error-prone to build — and to paste
+// through github.dev — than a drag-and-drop widget, and routes here
+// typically only have a handful of stops.
+//
+// The swap goes through a temporary out-of-range value first (rather than
+// updating the two rows directly to each other's values) in case
+// sequence_order ever gets a per-route uniqueness constraint — without
+// that, the middle of a direct swap would briefly have two stops sharing
+// the same order.
+export async function moveRouteStop(
+  routeId: string,
+  stopId: string,
+  direction: "up" | "down"
+) {
+  const supabase = createAdminClient();
+
+  const { data: stops, error: fetchError } = await supabase
+    .from("route_stops")
+    .select("id, sequence_order")
+    .eq("route_id", routeId)
+    .order("sequence_order", { ascending: true });
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!stops) return;
+
+  const index = stops.findIndex((s) => s.id === stopId);
+  if (index === -1) return;
+
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (swapIndex < 0 || swapIndex >= stops.length) return;
+
+  const current = stops[index];
+  const neighbor = stops[swapIndex];
+  const TEMP_ORDER = -1;
+
+  let { error } = await supabase
+    .from("route_stops")
+    .update({ sequence_order: TEMP_ORDER })
+    .eq("id", current.id);
+  if (error) throw new Error(error.message);
+
+  ({ error } = await supabase
+    .from("route_stops")
+    .update({ sequence_order: current.sequence_order })
+    .eq("id", neighbor.id));
+  if (error) throw new Error(error.message);
+
+  ({ error } = await supabase
+    .from("route_stops")
+    .update({ sequence_order: neighbor.sequence_order })
+    .eq("id", current.id));
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/routes/${routeId}`);
+}
+
 export async function setStopScheduledTime(
   routeId: string,
   stopId: string,

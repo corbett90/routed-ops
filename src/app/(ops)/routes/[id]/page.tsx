@@ -5,6 +5,7 @@ import {
   addRouteStop,
   assignVehicleToRoute,
   grantStoreAccess,
+  moveRouteStop,
   revokeStoreAccess,
   setStopScheduledTime,
 } from "@/app/actions";
@@ -29,6 +30,9 @@ export default async function RouteDetailPage(
 
   const typedRoute = route as RouteWithDetails;
   const activeAssignment = typedRoute.route_assignments?.find((a) => a.is_active);
+  const sortedStops = typedRoute.route_stops
+    ? [...typedRoute.route_stops].sort((a, b) => a.sequence_order - b.sequence_order)
+    : [];
 
   const { data: vehicles } = await supabase
     .from("vehicles")
@@ -102,123 +106,153 @@ export default async function RouteDetailPage(
       <section className="rounded-lg border border-border bg-white p-5 space-y-4">
         <h2 className="font-semibold">Stops (in order)</h2>
         <div className="space-y-3">
-          {typedRoute.route_stops
-            ?.sort((a, b) => a.sequence_order - b.sequence_order)
-            .map((stop) => (
-              <div
-                key={stop.id}
-                className="rounded-md border border-border px-3 py-3 text-sm space-y-3"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft/40 text-accent font-semibold text-xs">
-                    {stop.sequence_order}
+          {sortedStops.map((stop, index) => (
+            <div
+              key={stop.id}
+              className="rounded-md border border-border px-3 py-3 text-sm space-y-3"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col shrink-0">
+                  <form
+                    action={async () => {
+                      "use server";
+                      await moveRouteStop(id, stop.id, "up");
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      disabled={index === 0}
+                      aria-label={`Move ${stop.store_name} up`}
+                      className="flex h-4 w-6 items-center justify-center text-foreground/40 hover:text-accent disabled:opacity-20 disabled:hover:text-foreground/40"
+                    >
+                      ▲
+                    </button>
+                  </form>
+                  <form
+                    action={async () => {
+                      "use server";
+                      await moveRouteStop(id, stop.id, "down");
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      disabled={index === sortedStops.length - 1}
+                      aria-label={`Move ${stop.store_name} down`}
+                      className="flex h-4 w-6 items-center justify-center text-foreground/40 hover:text-accent disabled:opacity-20 disabled:hover:text-foreground/40"
+                    >
+                      ▼
+                    </button>
+                  </form>
+                </div>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft/40 text-accent font-semibold text-xs">
+                  {stop.sequence_order}
+                </span>
+                <div>
+                  <div className="font-medium">{stop.store_name}</div>
+                  {stop.address && (
+                    <div className="text-foreground/50">{stop.address}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pl-9">
+                <LocateStopButton
+                  routeId={id}
+                  stopId={stop.id}
+                  address={stop.address}
+                  hasCoords={stop.lat !== null && stop.lng !== null}
+                />
+              </div>
+
+              <div className="pl-9 flex flex-wrap items-end gap-6">
+                <form
+                  action={async (formData) => {
+                    "use server";
+                    await setStopScheduledTime(id, stop.id, formData);
+                  }}
+                  className="flex items-end gap-2"
+                >
+                  <label className="text-xs">
+                    <span className="block text-foreground/60 mb-1">
+                      Scheduled arrival
+                    </span>
+                    <input
+                      type="time"
+                      name="scheduled_time"
+                      defaultValue={stop.scheduled_time?.slice(0, 5) ?? ""}
+                      className="rounded-md border border-border px-2 py-1 text-sm"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="text-xs text-accent font-medium hover:underline pb-1.5"
+                  >
+                    Save
+                  </button>
+                </form>
+
+                <div className="flex-1 min-w-52">
+                  <span className="block text-xs text-foreground/60 mb-1">
+                    Customer portal access
                   </span>
-                  <div>
-                    <div className="font-medium">{stop.store_name}</div>
-                    {stop.address && (
-                      <div className="text-foreground/50">{stop.address}</div>
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {stop.store_access?.map((access) => (
+                      <span
+                        key={access.id}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-background border border-border px-2.5 py-1 text-xs"
+                      >
+                        {access.email}
+                        <form
+                          action={async () => {
+                            "use server";
+                            await revokeStoreAccess(id, access.id);
+                          }}
+                        >
+                          <button
+                            type="submit"
+                            aria-label={`Remove access for ${access.email}`}
+                            className="text-foreground/40 hover:text-red-600"
+                          >
+                            &times;
+                          </button>
+                        </form>
+                      </span>
+                    ))}
+                    {(!stop.store_access || stop.store_access.length === 0) && (
+                      <span className="text-xs text-foreground/40">
+                        No customer logins yet.
+                      </span>
                     )}
                   </div>
-                </div>
-
-                <div className="pl-9">
-                  <LocateStopButton
-                    routeId={id}
-                    stopId={stop.id}
-                    address={stop.address}
-                    hasCoords={stop.lat !== null && stop.lng !== null}
-                  />
-                </div>
-
-                <div className="pl-9 flex flex-wrap items-end gap-6">
                   <form
                     action={async (formData) => {
                       "use server";
-                      await setStopScheduledTime(id, stop.id, formData);
+                      await grantStoreAccess(id, stop.id, formData);
                     }}
-                    className="flex items-end gap-2"
+                    className="flex gap-2"
                   >
-                    <label className="text-xs">
-                      <span className="block text-foreground/60 mb-1">
-                        Scheduled arrival
-                      </span>
-                      <input
-                        type="time"
-                        name="scheduled_time"
-                        defaultValue={stop.scheduled_time?.slice(0, 5) ?? ""}
-                        className="rounded-md border border-border px-2 py-1 text-sm"
-                      />
-                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      required
+                      placeholder="store-contact@client.com"
+                      className="flex-1 rounded-md border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-soft"
+                    />
                     <button
                       type="submit"
-                      className="text-xs text-accent font-medium hover:underline pb-1.5"
+                      className="text-xs text-accent font-medium hover:underline"
                     >
-                      Save
+                      Grant access &amp; invite
                     </button>
                   </form>
-
-                  <div className="flex-1 min-w-52">
-                    <span className="block text-xs text-foreground/60 mb-1">
-                      Customer portal access
-                    </span>
-                    <div className="flex flex-wrap gap-1.5 mb-1.5">
-                      {stop.store_access?.map((access) => (
-                        <span
-                          key={access.id}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-background border border-border px-2.5 py-1 text-xs"
-                        >
-                          {access.email}
-                          <form
-                            action={async () => {
-                              "use server";
-                              await revokeStoreAccess(id, access.id);
-                            }}
-                          >
-                            <button
-                              type="submit"
-                              aria-label={`Remove access for ${access.email}`}
-                              className="text-foreground/40 hover:text-red-600"
-                            >
-                              &times;
-                            </button>
-                          </form>
-                        </span>
-                      ))}
-                      {(!stop.store_access || stop.store_access.length === 0) && (
-                        <span className="text-xs text-foreground/40">
-                          No customer logins yet.
-                        </span>
-                      )}
-                    </div>
-                    <form
-                      action={async (formData) => {
-                        "use server";
-                        await grantStoreAccess(id, stop.id, formData);
-                      }}
-                      className="flex gap-2"
-                    >
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        placeholder="store-contact@client.com"
-                        className="flex-1 rounded-md border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-soft"
-                      />
-                      <button
-                        type="submit"
-                        className="text-xs text-accent font-medium hover:underline"
-                      >
-                        Grant access &amp; invite
-                      </button>
-                    </form>
-                    <p className="text-[11px] text-foreground/40 mt-1">
-                      Sends them an email to set up their portal password.
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-foreground/40 mt-1">
+                    Sends them an email to set up their portal password.
+                  </p>
                 </div>
               </div>
-            ))}
-          {(!typedRoute.route_stops || typedRoute.route_stops.length === 0) && (
+            </div>
+          ))}
+          {sortedStops.length === 0 && (
             <p className="text-sm text-foreground/50">No stops added yet.</p>
           )}
         </div>
