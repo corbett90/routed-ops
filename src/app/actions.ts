@@ -318,6 +318,45 @@ export async function regeocodeStop(
   return {};
 }
 
+// Edits a stop's typed address (e.g. fixing a typo that failed to geocode)
+// and re-geocodes it in the same step, so there's no separate "save" then
+// "locate" click needed. If the new address doesn't resolve, the address
+// text is still saved — only the coordinates are left as they were (or
+// null, if there weren't any yet) — same "never block on a bad address"
+// behavior as addRouteStop/regeocodeStop above.
+export async function updateStopAddress(
+  routeId: string,
+  stopId: string,
+  address: string
+): Promise<{ error?: string }> {
+  const trimmed = address.trim();
+  if (!trimmed) return { error: "Address can't be empty." };
+
+  const coords = await geocodeAddress(trimmed);
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("route_stops")
+    .update({
+      address: trimmed,
+      ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+    })
+    .eq("id", stopId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/routes/${routeId}`);
+  revalidatePath("/track");
+
+  if (!coords) {
+    return {
+      error:
+        "Address saved, but couldn't find coordinates for it — double-check it's a full, correct address.",
+    };
+  }
+  return {};
+}
+
 export async function setStopScheduledTime(
   routeId: string,
   stopId: string,
