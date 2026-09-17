@@ -2,6 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Route, RouteAssignment, Vehicle } from "@/lib/types";
 import { LiveMap, type RouteMarker } from "./LiveMap";
 
+type LatestPing = { lat: number; lng: number; recorded_at: string };
+
 export default async function TrackPage() {
   const supabase = createAdminClient();
 
@@ -21,10 +23,7 @@ export default async function TrackPage() {
     .order("recorded_at", { ascending: false })
     .limit(200);
 
-  const latestByRoute = new Map
-    string,
-    { lat: number; lng: number; recorded_at: string }
-  >();
+  const latestByRoute = new Map<string, LatestPing>();
   for (const ping of recentPings ?? []) {
     if (ping.route_id && !latestByRoute.has(ping.route_id)) {
       latestByRoute.set(ping.route_id, {
