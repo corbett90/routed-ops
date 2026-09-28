@@ -551,8 +551,19 @@ export async function createDeliveryCapture(formData: FormData) {
       .data.publicUrl;
   }
 
+  // Snapshot the stop's scheduled arrival time onto the delivery (migration
+  // 0007), so on-time reporting grades this delivery against the schedule in
+  // effect today, even if the stop's time is changed later.
+  const { data: stopRow } = await supabase
+    .from("route_stops")
+    .select("scheduled_time")
+    .eq("id", routeStopId)
+    .maybeSingle();
+  const scheduledTime = stopRow?.scheduled_time ?? null;
+
   const { error } = await supabase.from("deliveries").insert({
     id: deliveryId,
+    scheduled_time: scheduledTime,
     route_id: routeId,
     route_stop_id: routeStopId,
     vehicle_id: vehicleId,

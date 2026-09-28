@@ -14,6 +14,14 @@ export default async function DeliveriesPage(
   const { q } = await props.searchParams;
   const query = typeof q === "string" ? q.trim() : "";
 
+  // Default export range: the last 30 days, ending today (Eastern).
+  const exportTo = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+  const exportFromDate = new Date(`${exportTo}T00:00:00Z`);
+  exportFromDate.setUTCDate(exportFromDate.getUTCDate() - 29);
+  const exportFrom = exportFromDate.toISOString().slice(0, 10);
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("deliveries")
@@ -47,6 +55,59 @@ export default async function DeliveriesPage(
           Search by PO number or store — every drop is timestamped and photo/signature-backed.
         </p>
       </div>
+
+      <form
+        action="/deliveries/export"
+        method="get"
+        className="rounded-lg border border-border bg-white p-4 space-y-3"
+      >
+        <div>
+          <div className="font-semibold">Export on-time report to Excel</div>
+          <p className="text-sm text-foreground/60">
+            Every completed delivery in the date range, with scheduled vs. actual
+            time and an On Time / Late result. Early deliveries count as on time.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-foreground/60 mb-1">From</span>
+            <input
+              type="date"
+              name="from"
+              defaultValue={exportFrom}
+              required
+              className="rounded-md border border-border px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block text-foreground/60 mb-1">To</span>
+            <input
+              type="date"
+              name="to"
+              defaultValue={exportTo}
+              required
+              className="rounded-md border border-border px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block text-foreground/60 mb-1">Late after (min)</span>
+            <input
+              type="number"
+              name="grace"
+              defaultValue={15}
+              min={0}
+              max={240}
+              className="w-24 rounded-md border border-border px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-accent text-white text-sm font-medium px-4 py-2"
+          >
+            Download for Excel
+          </button>
+        </div>
+      </form>
 
       <form className="flex gap-2">
         <input

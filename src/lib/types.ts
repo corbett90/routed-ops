@@ -67,6 +67,7 @@ export interface Delivery {
   bol_number: string | null;
   status: DeliveryStatus;
   scheduled_at: string;
+  scheduled_time: string | null; // "HH:MM:SS" snapshot of the stop's scheduled time when delivered (migration 0007)
   delivered_at: string | null;
   signature_url: string | null;
   photo_url: string | null;
