@@ -49,6 +49,11 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
   const mapRef = useRef<LeafletMap | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const markersRef = useRef<Map<string, CircleMarker>>(new Map());
+  // In-flight marker glide animations, keyed by routeId (see glideMarkerTo).
+  const animationRef = useRef<Map<string, number>>(new Map());
+  // The route currently being followed, if any. A ref (not just state)
+  // because the realtime subscription below is captured once at mount.
+  const followRef = useRef<string | null>(null);
 
   // Every route's last known vehicle position, kept up to date regardless of
   // whether that route is currently shown — so switching a route's filter
@@ -88,6 +93,46 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
   const [hasLiveData, setHasLiveData] = useState(() =>
     initialRoutes.some((r) => r.lastPing !== null)
   );
+  const [followedId, setFollowedId] = useState<string | null>(null);
+
+  // Smooth the jump between 15-second pings: glide the marker from its
+  // current spot to the new ping over ~2.5s instead of teleporting it.
+  // Find-My-Friends feel with zero extra pings (no extra battery drain
+  // or database writes — PING_INTERVAL_MS is untouched).
+  function glideMarkerTo(
+    routeId: string,
+    marker: CircleMarker,
+    toLat: number,
+    toLng: number
+  ) {
+    const from = marker.getLatLng();
+    if (from.lat === toLat && from.lng === toLng) return;
+
+    const pending = animationRef.current.get(routeId);
+    if (pending) cancelAnimationFrame(pending);
+
+    const durationMs = 2500;
+    // rAF hands frame() a high-res timestamp — use the first one as
+    // t=0 instead of performance.now() (kept out of render-path purity
+    // lint).
+    let start: number | null = null;
+    function frame(now: number) {
+      if (start === null) start = now;
+      const t = Math.min(1, (now - start) / durationMs);
+      // easeInOutQuad
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      marker.setLatLng([
+        from.lat + (toLat - from.lat) * e,
+        from.lng + (toLng - from.lng) * e,
+      ]);
+      if (t < 1) {
+        animationRef.current.set(routeId, requestAnimationFrame(frame));
+      } else {
+        animationRef.current.delete(routeId);
+      }
+    }
+    animationRef.current.set(routeId, requestAnimationFrame(frame));
+  }
 
   function drawOrUpdateVehicleMarker(
     routeId: string,
@@ -108,8 +153,8 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
 
     const existing = markersRef.current.get(routeId);
     if (existing) {
-      existing.setLatLng([lat, lng]);
       existing.setPopupContent(popup);
+      glideMarkerTo(routeId, existing, lat, lng);
     } else {
       const marker = L.circleMarker([lat, lng], {
         radius: 9,
@@ -185,9 +230,19 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
       const map = L.map(containerRef.current).setView(center, 11);
       mapRef.current = map;
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      // A manual drag means "I'll look around myself" — drop follow mode.
+      map.on("dragstart", () => {
+        if (followRef.current !== null) {
+          followRef.current = null;
+          setFollowedId(null);
+        }
+      });
+
+      // CARTO Voyager — a minimal, Apple-Maps-like light basemap. Replaces
+      // the much busier OSM Standard tiles that made this view feel noisy.
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         maxZoom: 19,
       }).addTo(map);
 
@@ -224,12 +279,19 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
               row.lng,
               row.recorded_at
             );
+            // Follow mode: keep the followed driver centered,
+            // Find-My-Friends style.
+            if (followRef.current === row.route_id && mapRef.current) {
+              mapRef.current.panTo([row.lat, row.lng], { animate: true });
+            }
           }
         )
         .subscribe();
 
       dispose = () => {
         supabase.removeChannel(channel);
+        for (const id of animationRef.current.values()) cancelAnimationFrame(id);
+        animationRef.current.clear();
         map.remove();
         mapRef.current = null;
       };
@@ -249,6 +311,15 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
 
     if (isCurrentlyOn) {
       visibilityRef.current.delete(routeId);
+      if (followRef.current === routeId) {
+        followRef.current = null;
+        setFollowedId(null);
+      }
+      const pending = animationRef.current.get(routeId);
+      if (pending) {
+        cancelAnimationFrame(pending);
+        animationRef.current.delete(routeId);
+      }
       const marker = markersRef.current.get(routeId);
       if (marker && mapRef.current) {
         mapRef.current.removeLayer(marker);
@@ -265,26 +336,56 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
     setVisibleIds(new Set(visibilityRef.current));
   }
 
+  function toggleFollow(routeId: string) {
+    const next = followRef.current === routeId ? null : routeId;
+    followRef.current = next;
+    setFollowedId(next);
+    // Snap to the driver's last known position right away.
+    if (next) {
+      const pos = positionsRef.current.get(routeId);
+      if (pos && mapRef.current) {
+        mapRef.current.panTo([pos.lat, pos.lng], { animate: true });
+      }
+    }
+  }
+
   return (
     <div className="space-y-3">
       {initialRoutes.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {initialRoutes.map((route) => {
             const isOn = visibleIds.has(route.routeId);
+            const isFollowed = followedId === route.routeId;
             return (
-              <button
-                key={route.routeId}
-                type="button"
-                onClick={() => toggleRoute(route.routeId)}
-                aria-pressed={isOn}
-                className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${
-                  isOn
-                    ? "bg-accent-soft/30 border-accent-soft text-accent"
-                    : "bg-background border-border text-foreground/40"
-                }`}
-              >
-                {route.routeName}
-              </button>
+              <div key={route.routeId} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleRoute(route.routeId)}
+                  aria-pressed={isOn}
+                  className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${
+                    isOn
+                      ? "bg-accent-soft/30 border-accent-soft text-accent"
+                      : "bg-background border-border text-foreground/40"
+                  }`}
+                >
+                  {route.routeName}
+                </button>
+                {isOn && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFollow(route.routeId)}
+                    aria-pressed={isFollowed}
+                    title={isFollowed ? "Stop following this driver" : "Follow this driver"}
+                    className={`text-xs font-medium rounded-full px-2.5 py-1.5 border transition-colors ${
+                      isFollowed
+                        ? "bg-accent border-accent text-white"
+                        : "bg-background border-border text-foreground/40 hover:text-accent"
+                    }`}
+                  >
+                    {isFollowed ? "Following" : "Follow"}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

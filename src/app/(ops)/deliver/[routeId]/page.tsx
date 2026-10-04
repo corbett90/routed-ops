@@ -79,6 +79,12 @@ export default async function DeliverStopListPage(
                     {stop.address && (
                       <div className="text-sm text-foreground/50">{stop.address}</div>
                     )}
+                    {stop.driver_instructions && (
+                      <div className="mt-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-xs text-amber-900">
+                        <span className="font-semibold">Delivery note: </span>
+                        {stop.driver_instructions}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {done ? (

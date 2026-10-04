@@ -38,6 +38,17 @@ export default async function DeliverCapturePage(
         {stop.address && <p className="text-foreground/60 mt-1">{stop.address}</p>}
       </div>
 
+      {stop.driver_instructions && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold text-amber-900">
+            Delivery instructions
+          </h2>
+          <p className="text-sm text-amber-900/80 mt-1 whitespace-pre-wrap">
+            {stop.driver_instructions}
+          </p>
+        </div>
+      )}
+
       <DeliveryForm
         routeId={routeId}
         stopId={stopId}

@@ -14,23 +14,24 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
   return (
     <>
       <header className="border-b border-border bg-white">
-        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center justify-between">
-          <Link href="/portal" className="font-bold text-lg text-accent">
+        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center justify-between gap-3 min-w-0">
+          <Link href="/portal" className="font-bold text-lg text-accent shrink-0">
             Routed
           </Link>
           {user && (
-            <nav className="flex items-center gap-6 text-sm font-medium text-foreground/70">
-              <Link href="/portal" className="hover:text-accent">
+            <nav className="flex items-center gap-3 sm:gap-6 text-sm font-medium text-foreground/70 min-w-0">
+              <Link href="/portal" className="hover:text-accent whitespace-nowrap">
                 Dashboard
               </Link>
-              <Link href="/portal/deliveries" className="hover:text-accent">
-                Proof of Delivery
+              <Link href="/portal/deliveries" className="hover:text-accent whitespace-nowrap">
+                <span className="sm:hidden">Deliveries</span>
+                <span className="hidden sm:inline">Proof of Delivery</span>
               </Link>
-              <span className="text-foreground/40 hidden sm:inline">
+              <span className="text-foreground/40 hidden sm:inline truncate">
                 {user.email}
               </span>
-              <form action={signOutOfPortal}>
-                <button type="submit" className="hover:text-accent">
+              <form action={signOutOfPortal} className="shrink-0">
+                <button type="submit" className="hover:text-accent whitespace-nowrap">
                   Sign out
                 </button>
               </form>

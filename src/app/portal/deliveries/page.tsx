@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import type { DeliveryWithContext } from "@/lib/types";
 
+// The portal's explicit column list omits driver_notes (internal-only), so
+// rows here are deliveries minus that one field — the type says so too.
+type PortalDelivery = Omit<DeliveryWithContext, "driver_notes">;
+
 // Same idea as the internal /deliveries search, but for a logged-in
 // customer: uses the anon-key, cookie-aware client so Row Level Security
 // (migration 0003) restricts results to this email's own store(s) —
@@ -13,14 +17,20 @@ export default async function PortalDeliveriesPage(
   const query = typeof q === "string" ? q.trim() : "";
 
   const supabase = await createClient();
+  // Explicit column list — deliberately NOT select("*"): driver_notes is
+  // internal-only (migration 0008) and must never reach the customer portal.
+  // If a new internal column is ever added to deliveries, it stays hidden
+  // here by default; add it to this list only if customers should see it.
   const { data, error } = await supabase
     .from("deliveries")
-    .select("*, route_stops(*), routes(*)")
+    .select(
+      "id, route_id, route_stop_id, vehicle_id, driver_name, po_number, bol_number, status, scheduled_at, scheduled_time, delivered_at, signature_url, photo_url, delivered_lat, delivered_lng, customer_notes, created_at, route_stops(*), routes(*)"
+    )
     .eq("status", "delivered")
     .order("delivered_at", { ascending: false })
     .limit(200);
 
-  const deliveries = (data ?? []) as DeliveryWithContext[];
+  const deliveries = (data ?? []) as unknown as PortalDelivery[];
 
   const filtered = query
     ? deliveries.filter((d) => {
@@ -90,6 +100,13 @@ export default async function PortalDeliveriesPage(
                     timeZone: "America/New_York",
                   })}
               </div>
+
+              {d.customer_notes && (
+                <p className="text-sm text-foreground/70 rounded-md bg-background border border-border px-3 py-2">
+                  <span className="font-medium">Driver note: </span>
+                  {d.customer_notes}
+                </p>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 {d.photo_url && (

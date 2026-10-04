@@ -61,20 +61,26 @@ export default async function StaffPage() {
                   {s.role === "admin" ? "Admin" : "Driver"}
                 </span>
               </div>
-              {s.email !== user?.email?.toLowerCase() && (
-                <form
-                  action={async () => {
-                    "use server";
-                    await removeStaffAccess(s.id);
-                  }}
-                >
-                  <button
-                    type="submit"
-                    className="text-foreground/40 hover:text-red-600 text-xs"
+              {s.is_owner ? (
+                <span className="text-xs font-medium rounded-full bg-accent-soft/30 text-accent px-3 py-1">
+                  Owner
+                </span>
+              ) : (
+                s.email !== user?.email?.toLowerCase() && (
+                  <form
+                    action={async () => {
+                      "use server";
+                      await removeStaffAccess(s.id);
+                    }}
                   >
-                    Remove
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      className="text-foreground/40 hover:text-red-600 text-xs"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                )
               )}
             </div>
           ))}

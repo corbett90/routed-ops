@@ -130,8 +130,9 @@ export async function signOutStaff() {
 }
 
 // ---------------------------------------------------------------------------
-// Staff management (admin-only — enforced by the caller/page, not here;
-// see src/app/(ops)/staff/page.tsx).
+// Staff management (admin-only — the staff page restricts itself to
+// role='admin', AND removeStaffAccess below re-checks ownership
+// server-side, since UI-only checks are bypassable with a crafted request).
 // ---------------------------------------------------------------------------
 export async function addStaffAccess(formData: FormData) {
   const supabase = createAdminClient();
@@ -158,6 +159,26 @@ export async function addStaffAccess(formData: FormData) {
 
 export async function removeStaffAccess(staffAccessId: string) {
   const supabase = createAdminClient();
+
+  // Server-side owner guard (migration 0008): the staff page hides the
+  // Remove button for owner rows, but that's UI-only and bypassable — refuse
+  // the removal here too. Fails closed: if the lookup itself errors (e.g.
+  // the migration hasn't been applied yet), removal is refused rather than
+  // allowed through unchecked.
+  const { data: target, error: lookupError } = await supabase
+    .from("staff_access")
+    .select("is_owner")
+    .eq("id", staffAccessId)
+    .maybeSingle();
+
+  if (lookupError) throw new Error(lookupError.message);
+
+  if (target?.is_owner) {
+    throw new Error(
+      "The owner account can't be removed from the app. Ownership changes require direct database access."
+    );
+  }
+
   const { error } = await supabase
     .from("staff_access")
     .delete()
@@ -283,6 +304,28 @@ export async function addRouteStop(routeId: string, formData: FormData) {
     lat: coords?.lat ?? null,
     lng: coords?.lng ?? null,
   });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/routes/${routeId}`);
+}
+
+// Saves an admin-written delivery note for one stop (migration 0008),
+// shown to the driver on the stop list and capture page — e.g. "use back
+// dock, ask for Maria". Empty clears it.
+export async function setStopDriverInstructions(
+  routeId: string,
+  stopId: string,
+  formData: FormData
+) {
+  const supabase = createAdminClient();
+  const raw = formData.get("driver_instructions");
+  const instructions =
+    raw && String(raw).trim() ? String(raw).trim() : null;
+
+  const { error } = await supabase
+    .from("route_stops")
+    .update({ driver_instructions: instructions })
+    .eq("id", stopId);
 
   if (error) throw new Error(error.message);
   revalidatePath(`/routes/${routeId}`);
@@ -518,6 +561,15 @@ export async function createDeliveryCapture(formData: FormData) {
     : null;
   const lat = formData.get("lat") ? Number(formData.get("lat")) : null;
   const lng = formData.get("lng") ? Number(formData.get("lng")) : null;
+  // Two notes boxes (migration 0008): driver_notes is INTERNAL and must
+  // never be exposed to the customer portal; customer_notes is shown to
+  // the customer on the portal Proof of Delivery page.
+  const driverNotes = formData.get("driver_notes")
+    ? String(formData.get("driver_notes")).trim() || null
+    : null;
+  const customerNotes = formData.get("customer_notes")
+    ? String(formData.get("customer_notes")).trim() || null
+    : null;
   const signatureDataUrl = formData.get("signature_data")
     ? String(formData.get("signature_data"))
     : null;
@@ -576,6 +628,8 @@ export async function createDeliveryCapture(formData: FormData) {
     photo_url: photoUrl,
     delivered_lat: lat,
     delivered_lng: lng,
+    driver_notes: driverNotes,
+    customer_notes: customerNotes,
   });
 
   if (error) throw new Error(error.message);

@@ -175,6 +175,38 @@ export function DeliveryForm({
         </div>
       </div>
 
+      <div className="rounded-lg border border-border bg-white p-5 space-y-4">
+        <h2 className="font-semibold">Notes</h2>
+        <label className="block text-sm">
+          <span className="block text-foreground/70 mb-1">
+            Driver notes{" "}
+            <span className="text-foreground/40">
+              (internal — not shown to customers)
+            </span>
+          </span>
+          <textarea
+            name="driver_notes"
+            rows={2}
+            placeholder="Anything the office should know…"
+            className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-soft"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="block text-foreground/70 mb-1">
+            Customer notes{" "}
+            <span className="text-foreground/40">
+              (visible to the customer)
+            </span>
+          </span>
+          <textarea
+            name="customer_notes"
+            rows={2}
+            placeholder="Left at back dock, signed by Maria…"
+            className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-soft"
+          />
+        </label>
+      </div>
+
       <div className="rounded-lg border border-border bg-white p-5 space-y-3">
         <h2 className="font-semibold">Photo of PO / BOL / drop</h2>
         <input

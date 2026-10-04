@@ -7,6 +7,7 @@ import {
   grantStoreAccess,
   moveRouteStop,
   revokeStoreAccess,
+  setStopDriverInstructions,
   setStopScheduledTime,
 } from "@/app/actions";
 import { LocateStopButton } from "./LocateStopButton";
@@ -165,6 +166,33 @@ export default async function RouteDetailPage(
               </div>
 
               <div className="pl-9 flex flex-wrap items-end gap-6">
+                <form
+                  action={async (formData) => {
+                    "use server";
+                    await setStopDriverInstructions(id, stop.id, formData);
+                  }}
+                  className="flex-1 min-w-52"
+                >
+                  <label className="text-xs">
+                    <span className="block text-foreground/60 mb-1">
+                      Driver instructions
+                    </span>
+                    <textarea
+                      name="driver_instructions"
+                      rows={2}
+                      defaultValue={stop.driver_instructions ?? ""}
+                      placeholder="e.g. Use back dock, ask for Maria"
+                      className="w-full rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent-soft"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="text-xs text-accent font-medium hover:underline mt-1"
+                  >
+                    Save
+                  </button>
+                </form>
+
                 <form
                   action={async (formData) => {
                     "use server";

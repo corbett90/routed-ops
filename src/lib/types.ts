@@ -33,6 +33,7 @@ export interface RouteStop {
   lng: number | null;
   sequence_order: number;
   scheduled_time: string | null; // "HH:MM:SS", the time of day the driver is expected
+  driver_instructions: string | null; // admin-written per-stop guidance shown to the driver (migration 0008)
   created_at: string;
 }
 
@@ -73,6 +74,8 @@ export interface Delivery {
   photo_url: string | null;
   delivered_lat: number | null;
   delivered_lng: number | null;
+  driver_notes: string | null; // driver-written at capture, INTERNAL — never exposed to the portal (migration 0008)
+  customer_notes: string | null; // driver-written at capture, shown to the customer on the portal (migration 0008)
   created_at: string;
 }
 
