@@ -238,13 +238,24 @@ export function LiveMap({ initialRoutes }: { initialRoutes: RouteMarker[] }) {
         }
       });
 
-      // CARTO Voyager — a minimal, Apple-Maps-like light basemap. Replaces
-      // the much busier OSM Standard tiles that made this view feel noisy.
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-      }).addTo(map);
+      // Esri World Light Gray — a minimal, Apple-Maps-like light basemap
+      // with no API key required. (CARTO Voyager was tried first but now
+      // watermarks every tile with "API KEY REQUIRED"; Esri serves these
+      // tiles keyless.) Note Esri's {z}/{y}/{x} tile order.
+      // Base layer (roads/landuse, no labels) ...
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution:
+            '&copy; <a href="https://www.esri.com/">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+      // ... plus the reference overlay (place/road labels) on top.
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+        { maxZoom: 19 }
+      ).addTo(map);
 
       for (const [routeId, pos] of positionsRef.current) {
         drawOrUpdateVehicleMarker(routeId, pos.lat, pos.lng, pos.recorded_at);
