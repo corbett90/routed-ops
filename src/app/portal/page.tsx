@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Delivery, RouteWithDetails } from "@/lib/types";
+import type { Delivery } from "@/lib/types";
 
 // Customer dashboard: "what's assigned to my store, when is it scheduled,
 // and did it actually show up." This queries with the regular anon-key,
@@ -22,12 +22,27 @@ export default async function PortalDashboardPage() {
   // sorts last (nullsFirst: false) rather than first.
   const { data: stops, error } = await supabase
     .from("route_stops")
-    .select("*, routes(*, route_assignments(*, vehicles(*)))")
+    // Explicit column list — driver_instructions (migration 0008) is internal
+    // driver guidance and must never reach the customer portal.
+    .select("id, store_name, scheduled_time, routes(id, name, route_assignments(is_active, vehicles(id, name)))")
     .order("scheduled_time", { ascending: true, nullsFirst: false });
 
-  const typedStops = (stops ?? []) as (RouteWithDetails["route_stops"][number] & {
-    routes: RouteWithDetails | null;
-  })[];
+  // Narrow shape matching the explicit select above (NOT the full RouteStop:
+  // driver_instructions and other internal columns are never fetched here).
+  type PortalStop = {
+    id: string;
+    store_name: string;
+    scheduled_time: string | null;
+    routes: {
+      id: string;
+      name: string;
+      route_assignments: {
+        is_active: boolean;
+        vehicles: { id: string; name: string } | null;
+      }[];
+    } | null;
+  };
+  const typedStops = (stops ?? []) as unknown as PortalStop[];
 
   const stopIds = typedStops.map((s) => s.id);
   const startOfToday = new Date();

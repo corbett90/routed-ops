@@ -24,7 +24,7 @@ export default async function PortalDeliveriesPage(
   const { data, error } = await supabase
     .from("deliveries")
     .select(
-      "id, route_id, route_stop_id, vehicle_id, driver_name, po_number, bol_number, status, scheduled_at, scheduled_time, delivered_at, signature_url, photo_url, delivered_lat, delivered_lng, customer_notes, created_at, route_stops(*), routes(*)"
+      "id, route_id, route_stop_id, vehicle_id, driver_name, po_number, bol_number, status, scheduled_at, scheduled_time, delivered_at, signature_url, photo_url, delivered_lat, delivered_lng, customer_notes, created_at, route_stops(id, store_name)"
     )
     .eq("status", "delivered")
     .order("delivered_at", { ascending: false })
